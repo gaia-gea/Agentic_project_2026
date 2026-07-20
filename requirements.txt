@@ -1,0 +1,16 @@
+langchain
+langchain_community
+langchain-openai
+langchain-ollama
+python-dotenv
+langchain-google-genai
+langchain-groq
+networkx
+matplotlib
+numpy
+pandas
+plotly
+streamlit
+tqdm
+langgraph
+langchain-core
