@@ -1,14 +1,5 @@
 """Streamlit dashboard for the agentic network evaluation project.
 
-Each simulation run (one invocation of main.py) produces a folder named
-`{timestamp}__{model_name}` containing one "agentic" series
-(driven by whichever LLM was active) plus the 3 heuristic baselines. To
-compare different LLM agents against each other, this dashboard can load
-*multiple* run folders at once and overlay their "agentic" series together,
-while only showing the heuristic baselines once (they're deterministic
-given the fixed random seed, so repeating them per run would just clutter
-the charts).
-
 Two views:
   - "Compare"  : overlay every selected agent model (+ heuristics) on the
     same charts so results can be judged side by side.
@@ -1319,13 +1310,13 @@ with tab_detail:
                 {
                     "file": "model_metrics.csv",
                     "exists": (run_path / "model_metrics.csv").exists(),
-                    "rows_loaded": len(series_model_metrics),
+                    "rows_loaded": str(len(series_model_metrics)),
                     "used_for": "Avg inference, total tokens, LLM calls",
                 },
                 {
                     "file": "agent_decisions.csv",
                     "exists": (run_path / "agent_decisions.csv").exists(),
-                    "rows_loaded": len(series_agent_decisions),
+                    "rows_loaded": str(len(series_agent_decisions)),
                     "used_for": "New LLM plans, plan reuse, pending/submitted decisions",
                 },
                 {
@@ -1335,6 +1326,9 @@ with tab_detail:
                     "used_for": "Metadata fallback only",
                 },
             ])
+            # Streamlit uses PyArrow internally. Mixed integer/string columns can
+            # trigger ArrowInvalid, so force the diagnostic table to strings.
+            telemetry_status = telemetry_status.astype(str)
             st.dataframe(telemetry_status, hide_index=True, width="stretch")
         else:
             st.warning("No run path was stored for this series.")
