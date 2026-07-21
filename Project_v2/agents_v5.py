@@ -526,14 +526,38 @@ class RoutingAgent:
             strategy = "direct_fast_path"
 
         diagnostics = state.get("routing_diagnostics", {})
+        selected_step = (
+            self.current_plan.get("selected_step")
+            if self.current_plan is not None
+            else None
+        )
+        route_changes = 0
+        for flow, path in state.get("routes", {}).items():
+            current = self._current_path(
+                state["flow_table"], flow[0], flow[1]
+            )
+            if current and current != path:
+                route_changes += 1
         flow_metrics = {
             "step": self.ctrl.step_count,
+            "snapshot_step": getattr(state.get("topology"), "step", self.ctrl.step_count),
             "situation_type": state["situation_type"],
+            "situation": state["situation_type"],
             "strategy": strategy,
             "strategy_source": state.get("strategy_source", "none"),
+            "decision_source": state.get("strategy_source", "none"),
             "event_key": state.get("event_key", ""),
             "active_flows": active_count,
             "routed_flows": routed_count,
+            "unresolved_flows": active_count - routed_count,
+            "route_changes": route_changes,
+            "decision_age_steps": (
+                max(0, self.ctrl.step_count - selected_step)
+                if selected_step is not None else 0
+            ),
+            "max_primary_pressure": state.get("pressure_summary", {}).get(
+                "max_pressure", 0.0
+            ),
             "fast_path_flows": diagnostics.get("fast_path_flows", 0),
             "complex_flows": diagnostics.get("complex_flows", 0),
             "llm_planned_flows": diagnostics.get("llm_planned_flows", 0),
@@ -543,6 +567,11 @@ class RoutingAgent:
             "llm_pending_flows": diagnostics.get("llm_pending_flows", 0),
             "unresolved_complex_flows": diagnostics.get(
                 "unresolved_complex_flows", 0
+            ),
+            "candidate_flows": diagnostics.get("candidate_flows", 0),
+            "no_candidate_flows": diagnostics.get("no_candidate_flows", 0),
+            "failed_route_flows": state.get("pressure_summary", {}).get(
+                "no_preferred_path_flows", 0
             ),
             "fast_path_ratio": (
                 diagnostics.get("fast_path_flows", 0) / active_count

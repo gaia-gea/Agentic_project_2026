@@ -1,9 +1,9 @@
 import os
 import random
-import json
 import re
 from datetime import datetime
-
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,6 +12,7 @@ from tqdm import tqdm
 from agents_v5 import RoutingAgent
 from config import *
 from helpers import create_random_network, create_random_traffic_pattern
+from results_export import DashboardResultsCollector
 from simulation import NetworkGraph, TrafficModel, ControllerAPI, Simulator
 
 if __name__ == "__main__":
@@ -60,23 +61,15 @@ if __name__ == "__main__":
     # Setup controller + agent
     ctrl = ControllerAPI(g)
     llm_agent = RoutingAgent(ctrl, sla_resolver=traffic.get_max_latency_ms)
-
-    with open(result_path("run_metadata.json"), "w", encoding="utf-8") as handle:
-        json.dump(
-            {
-                "run_id": os.path.basename(results_dir),
-                "generated_at": datetime.now().isoformat(),
-                "random_seed": random_seed,
-                "num_steps": num_steps,
-                "algorithms": algorithms,
-                "agent": "agents_v5",
-                "model_key": llm_agent.model_key,
-                "provider": llm_agent.model_config["provider"],
-                "model": llm_agent.model_config["model"],
-            },
-            handle,
-            indent=2,
-        )
+    dashboard_collector = DashboardResultsCollector(
+        g,
+        congestion_threshold=float(
+            globals().get("DASHBOARD_CONGESTION_THRESHOLD", 0.8)
+        ),
+        step_duration_seconds=float(
+            globals().get("SIMULATION_STEP_DURATION_SECONDS", 1.0)
+        ),
+    )
 
     # Collect metrics
     all_history = {}
@@ -106,6 +99,7 @@ if __name__ == "__main__":
             )
             for t in tqdm(range(num_steps)):
                 _, metrics = simulator.step(algo)
+                dashboard_collector.collect_step(algo, t, metrics)
                 for k in metric_names:
                     history[k].append(metrics.get(k, 0.0))
                 for _, key, _ in request_outcome_keys:
@@ -163,5 +157,41 @@ if __name__ == "__main__":
         all_history_per_demand[algo].to_csv(
             result_path(f"all_history_{algo}.csv")
         )
+
+    model_metrics = [
+        {"algorithm": "agentic", "model_key": llm_agent.model_key, **row}
+        for row in llm_agent.llm_call_metrics
+    ]
+    agent_decisions = [
+        {"algorithm": "agentic", **row}
+        for row in llm_agent.flow_decision_metrics
+    ]
+    dashboard_collector.export(
+        results_dir,
+        metadata={
+            "run_id": os.path.basename(results_dir),
+            "random_seed": random_seed,
+            "num_steps": num_steps,
+            "algorithms": algorithms,
+            "agent": {
+                "version": "v5",
+                "pressure_threshold": float(
+                    globals().get("V5_PRESSURE_THRESHOLD", 1.0)
+                ),
+                "top_k_affected_flows": int(
+                    globals().get("LLM_TOP_K_AFFECTED_FLOWS", 3)
+                ),
+            },
+            "models": {
+                "agentic": {
+                    "key": llm_agent.model_key,
+                    "name": llm_agent.model_config["model"],
+                    "provider": llm_agent.model_config["provider"],
+                }
+            },
+        },
+        model_metrics=model_metrics,
+        agent_decisions=agent_decisions,
+    )
 
     print(f"Simulation completed. Results were saved to {results_dir}.")

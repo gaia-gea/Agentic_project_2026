@@ -1,12 +1,12 @@
 num_steps = 120
 
 algorithms = [
-    "heuristic_no_delay",
-    "heuristic_low_delay",
-    "heuristic_high_delay", 
+    
     "agentic"
 ]
-# ]
+#  "heuristic_no_delay",
+    # "heuristic_low_delay",
+    # "heuristic_high_delay",]
 
 colors = {
     "heuristic_no_delay": "blue",
@@ -57,21 +57,23 @@ traffic_args = {
 }
 
 
-POLICY_REFRESH_STEPS = 10
-LLM_TOP_K_AFFECTED_FLOWS = 10
+
+LLM_TOP_K_AFFECTED_FLOWS = 5
 
 
 
 #keys to compare models
-ACTIVE_AGENT_MODEL = "local_llama"
+ACTIVE_AGENT_MODEL = "requesty_claude"
 
 MODEL_CONFIGS = {
     # Local model through Ollama.
     
     "local_llama": {
         "provider": "ollama",
-        "model": "llama3.2",
+        "model": "llama3.2:1b",
         "temperature": 0.0,
+        "max_tokens": 80,
+        "timeout": 80.0,
         "keep_alive": "30m",
         "num_ctx": 2048,
     },

@@ -101,12 +101,28 @@ class DashboardResultsCollector:
 
         network = pd.DataFrame(self.network_rows)
         decisions = pd.DataFrame(agent_decisions or [])
+        if decisions.empty:
+            decisions = pd.DataFrame(columns=[
+                "algorithm", "step", "snapshot_step", "situation",
+                "decision_source", "strategy", "active_flows",
+                "routed_flows", "unresolved_flows", "route_changes",
+                "decision_age_steps", "max_primary_pressure",
+                "failed_route_flows", "candidate_flows",
+                "no_candidate_flows",
+            ])
+        model_frame = pd.DataFrame(model_metrics or [])
+        if model_frame.empty:
+            model_frame = pd.DataFrame(columns=[
+                "algorithm", "model_key", "provider", "model", "status",
+                "inference_time_ms", "input_tokens", "output_tokens",
+                "total_tokens", "step", "completed_step", "situation_type",
+            ])
         network = self._attach_agent_decisions(network, decisions)
 
         network.to_csv(output / "network_metrics.csv", index=False)
         pd.DataFrame(self.link_rows).to_csv(output / "link_history.csv", index=False)
         pd.DataFrame(self.flow_rows).to_csv(output / "flow_events.csv", index=False)
-        pd.DataFrame(model_metrics or []).to_csv(output / "model_metrics.csv", index=False)
+        model_frame.to_csv(output / "model_metrics.csv", index=False)
         decisions.to_csv(output / "agent_decisions.csv", index=False)
 
         payload = {
