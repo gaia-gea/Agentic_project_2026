@@ -718,10 +718,21 @@ def comparison_pdr_figure(network: pd.DataFrame, series_meta: dict, series_ids: 
             mode="lines",
             line=dict(color=series_color(series_meta, sid), width=2.4),
         ))
-    fig.update_layout(title="PDR proxy over time — all selected series in one chart")
+    fig.update_layout(title="PDR over time")
     fig.update_yaxes(title_text="PDR (%)", range=[0, 105])
     fig.update_xaxes(title_text="Time step")
-    return style_figure(fig, height=400)
+    fig = style_figure(fig, height=400)
+    fig.update_layout(
+        margin=dict(l=15, r=15, t=95, b=20),
+        legend=dict(
+            orientation="h",
+            y=1.10,
+            yanchor="bottom",
+            x=0,
+            xanchor="left",
+        ),
+    )
+    return fig
 
 
 def comparison_throughput_figure(summary: pd.DataFrame, series_meta: dict) -> go.Figure:
@@ -745,15 +756,63 @@ def comparison_incidents_figure(summary: pd.DataFrame, series_meta: dict) -> go.
     labels = [series_label(series_meta, s) for s in summary["series"]]
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=labels, y=summary["congestion_duration_s"],
-        name="Congestion (s)", marker_color=COLORS["amber"],
-    ))
-    fig.add_trace(go.Bar(
         x=labels, y=summary["latency_sla_duration_s"],
         name="Latency SLA violations (s)", marker_color=COLORS["red"],
     ))
-    fig.update_layout(title="Incident duration per series", barmode="group")
+    fig.update_layout(title="SLA delay violation", showlegend=False)
     fig.update_yaxes(title_text="Seconds")
+    return style_figure(fig, height=380)
+
+
+def comparison_agent_metric_figure(
+    summary: pd.DataFrame,
+    series_meta: dict,
+    metric: str,
+    title: str,
+    yaxis_title: str,
+    value_scale: float = 1.0,
+    value_decimals: int = 0,
+) -> go.Figure:
+    """Compare one LLM telemetry metric across agent series only."""
+    agents = summary[
+        summary["series"].map(
+            lambda sid: series_meta.get(sid, {}).get("kind") == "agent"
+        )
+    ].dropna(subset=[metric])
+
+    fig = go.Figure()
+    if agents.empty:
+        fig.add_annotation(
+            text="No successful LLM telemetry is available for the selected agents.",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=15, color=COLORS["muted"]),
+        )
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
+    else:
+        labels = [series_label(series_meta, sid) for sid in agents["series"]]
+        colors = [series_color(series_meta, sid) for sid in agents["series"]]
+        display_values = agents[metric] * value_scale
+        value_template = "%{text:,." + str(value_decimals) + "f}"
+        hover_template = (
+            "%{x}<br>%{y:,." + str(value_decimals) + "f} "
+            + yaxis_title
+            + "<extra></extra>"
+        )
+        fig.add_trace(go.Bar(
+            x=labels,
+            y=display_values,
+            marker_color=colors,
+            text=display_values,
+            texttemplate=value_template,
+            textposition="outside",
+            hovertemplate=hover_template,
+        ))
+        fig.update_yaxes(title_text=yaxis_title, rangemode="tozero")
+
+    fig.update_layout(title=title, showlegend=False)
     return style_figure(fig, height=380)
 
 
@@ -820,6 +879,15 @@ def topology_figure(
     series_links = add_link_state_columns(series_links, congestion_threshold_pct)
 
     current = series_links[series_links["time_step"].astype(int) == int(step)].copy()
+    if not current.empty:
+        # Draw healthy links first and failed links last so red dashed routes
+        # remain visible if the input contains overlapping edge records.
+        current["_draw_order"] = np.select(
+            [current["is_down"], current["is_congested"]],
+            [2, 1],
+            default=0,
+        )
+        current = current.sort_values("_draw_order")
 
     graph = nx.Graph()
     graph.add_edges_from(
@@ -860,7 +928,7 @@ def topology_figure(
         x0, y0 = positions[row.source]
         x1, y1 = positions[row.target]
 
-        up = parse_bool(getattr(row, "up", True), default=True)
+        up = bool(getattr(row, "is_up", True))
         utilization_pct = safe_float(getattr(row, "utilization_pct", 0.0))
         utilized_mbps = safe_float(getattr(row, "utilized_mbps", 0.0))
         capacity_mbps = safe_float(getattr(row, "capacity_mbps", 0.0))
@@ -1108,6 +1176,7 @@ with tab_compare:
         kpi_table = kpi_table[[
             "Series", "pdr_pct", "accepted_mbps_total", "congestion_duration_s",
             "latency_sla_duration_s", "route_changes_avg", "avg_inference_ms",
+            "total_tokens",
         ]].rename(columns={
             "pdr_pct": "PDR (%)",
             "accepted_mbps_total": "Total Mbps delivered",
@@ -1115,6 +1184,7 @@ with tab_compare:
             "latency_sla_duration_s": "SLA violations (s)",
             "route_changes_avg": "Route changes (avg/step)",
             "avg_inference_ms": "LLM inference (ms)",
+            "total_tokens": "Total tokens",
         })
         st.dataframe(
             kpi_table.style.format({
@@ -1124,6 +1194,7 @@ with tab_compare:
                 "SLA violations (s)": "{:,.1f}",
                 "Route changes (avg/step)": "{:.2f}",
                 "LLM inference (ms)": "{:,.1f}",
+                "Total tokens": "{:,.0f}",
             }, na_rep="N/A"),
             hide_index=True,
             width="stretch",
@@ -1138,6 +1209,30 @@ with tab_compare:
         left, right = st.columns(2)
         left.plotly_chart(comparison_throughput_figure(summary, series_meta), width="stretch")
         right.plotly_chart(comparison_incidents_figure(summary, series_meta), width="stretch")
+
+        tokens_col, response_col = st.columns(2)
+        tokens_col.plotly_chart(
+            comparison_agent_metric_figure(
+                summary,
+                series_meta,
+                metric="total_tokens",
+                title="Total token usage by agent",
+                yaxis_title="Tokens",
+            ),
+            width="stretch",
+        )
+        response_col.plotly_chart(
+            comparison_agent_metric_figure(
+                summary,
+                series_meta,
+                metric="avg_inference_ms",
+                title="Average inference time by agent",
+                yaxis_title="Seconds",
+                value_scale=0.001,
+                value_decimals=2,
+            ),
+            width="stretch",
+        )
 
         # st.plotly_chart(radar_figure(summary, series_meta), width="stretch")
         # st.caption(
@@ -1214,14 +1309,27 @@ with tab_detail:
         st.info("No topology steps available for this series.")
         st.stop()
 
+    default_topology_step = topology_steps[-1]
+    topology_widget_suffix = detail_series_id.replace(":", "_").replace("/", "_")
+    topology_widget_key = f"topology_step_v2_{topology_widget_suffix}"
+
+    if (
+        topology_widget_key not in st.session_state
+        or st.session_state[topology_widget_key] not in topology_steps
+    ):
+        st.session_state[topology_widget_key] = default_topology_step
+
     with topology_step_sidebar_slot.container():
         st.markdown("---")
         st.caption("TOPOLOGY EXPLORATION")
+        st.caption(
+            "The topology is a snapshot of one time step. Move the slider "
+            "to inspect healthy, congested and failed-link states."
+        )
         selected_step = st.select_slider(
             "Topology time step",
             options=topology_steps,
-            value=topology_steps[-1],
-            key=f"topology_step_{detail_series_id.replace(':', '_').replace('/', '_')}",
+            key=topology_widget_key,
             help=(
                 "Move this slider to inspect the network topology, congested links, "
                 "failed links and flow events at each simulation step."
