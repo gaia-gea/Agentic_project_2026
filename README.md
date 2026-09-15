@@ -107,4 +107,3 @@ The agent listens on `0.0.0.0:5005`. For TCP and UDP tests, start an `iperf3` se
 iperf3 -s -D -p 5201
 ```
 
-For the full hardware testing process, see [docs/HARDWARE_LINUX_TEST.md](docs/HARDWARE_LINUX_TEST.md).
