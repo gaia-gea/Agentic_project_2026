@@ -1,4 +1,37 @@
 
+# SDN Network Monitoring and Traffic Control Platform
+
+This project implements a physical Software-Defined Networking (SDN) laboratory connected to the **ONOS controller** and extended with an interactive web dashboard. It combines a real network of Linux hosts and programmable switches with a dashboard for inspecting topology, forwarding rules, traffic experiments, and performance measurements.
+
+The project is an educational and experimental environment for understanding how SDN control-plane decisions affect real data-plane traffic.
+
+## What was built
+
+- A physical SDN network using Linux hosts and programmable switches, connected to ONOS for device, link, and host discovery.
+- Extensions to an existing React dashboard for viewing the ONOS-discovered topology and interacting with flow rules and paths.
+- Lightweight Flask agents running on Linux hosts. The dashboard can request ICMP, TCP, or UDP traffic tests and retrieve their results.
+- A traffic-testing workflow for validating connectivity, bandwidth policies, and traffic paths in the real network.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    D["Web dashboard\nReact + TypeScript"]
+    O["ONOS controller"]
+    S["Programmable switches"]
+    H1["Linux host / agent\nFlask :5005"]
+    H2["Linux host / agent\nFlask :5005"]
+
+    D <-- "REST / WebSocket" --> O
+    O <-- "OpenFlow" --> S
+    D <-- "HTTP: start, stop, result" --> H1
+    D <-- "HTTP: start, stop, result" --> H2
+    H1 <-- "ICMP / iperf3 traffic" --> S
+    S <-- "forwarded traffic" --> H2
+```
+
+ONOS provides the dashboard with the discovered network view. The dashboard uses each discovered host IP to contact its traffic agent on port `5005`. The agent runs `ping` or `iperf3` toward the selected destination and returns measurements to the dashboard.
+
 ## Main features
 
 - **Topology visibility:** visual representation of hosts, switches, and links discovered by ONOS.
