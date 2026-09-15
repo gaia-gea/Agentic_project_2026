@@ -5,7 +5,7 @@ An agentic AI project that explores how Large Language Models (LLMs) can support
 
 In the evaluated simulation, the best agentic configuration delivered **44.4% more traffic than the best paired heuristic baseline**.
 
-> This is a research and educational prototype. It is not intended for production network control without additional testing, security controls, and validation.
+
 
 ## Why an Agentic Approach?
 
